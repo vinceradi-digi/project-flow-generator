@@ -1,15 +1,13 @@
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-
-type AuthMode = "signin" | "signup";
+import { supabase } from "@/lib/supabase";
 
 const AuthForm = () => {
-  const [mode, setMode] = useState<AuthMode>("signin");
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -20,18 +18,68 @@ const AuthForm = () => {
     setIsLoading(true);
 
     try {
-      // Mock authentication - in a real app this would connect to a backend
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      if (mode === "signin") {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-      // Store auth state - in a real app this would be a token from a backend
-      localStorage.setItem("isAuthenticated", "true");
-      localStorage.setItem("userEmail", email);
+        if (error) throw error;
+        
+        toast.success("Connexion réussie");
+        navigate("/dashboard");
+      } else {
+        console.log("Tentative de création de compte avec:", { email });
+        
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin + '/login',
+            data: {
+              email: email,
+            }
+          }
+        });
+
+        if (error) {
+          console.error("Erreur SignUp:", error);
+          throw error;
+        }
+
+        console.log("Résultat SignUp:", data);
+
+        if (data.user) {
+          // Nous ne créons plus le profil ici, il sera créé automatiquement
+          // par un trigger de base de données lors de la confirmation de l'email
+          toast.success("Un email de confirmation vous a été envoyé. Veuillez vérifier votre boîte de réception pour activer votre compte.");
+        } else {
+          console.log("Pas d'utilisateur créé dans la réponse");
+          toast.info("Un email de confirmation vous a été envoyé. Veuillez vérifier votre boîte de réception.");
+        }
+      }
+    } catch (error: any) {
+      console.error('Erreur détaillée:', error);
       
-      toast.success(mode === "signin" ? "Connecté avec succès" : "Compte créé avec succès");
-      navigate("/dashboard");
-    } catch (error) {
-      toast.error("Une erreur s'est produite");
-      console.error(error);
+      let errorMessage = "Une erreur s'est produite";
+      
+      if (error.message) {
+        switch (error.message) {
+          case "User already registered":
+            errorMessage = "Cet email est déjà utilisé";
+            break;
+          case "Invalid login credentials":
+            errorMessage = "Email ou mot de passe incorrect";
+            break;
+          case "Email not confirmed":
+            errorMessage = "Veuillez confirmer votre email avant de vous connecter";
+            break;
+          default:
+            errorMessage = `Erreur: ${error.message}`;
+        }
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -39,6 +87,8 @@ const AuthForm = () => {
 
   const toggleMode = () => {
     setMode(mode === "signin" ? "signup" : "signin");
+    setEmail("");
+    setPassword("");
   };
 
   return (

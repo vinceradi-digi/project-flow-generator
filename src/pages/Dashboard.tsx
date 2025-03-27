@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ import {
 import ProjectCard, { Project } from "@/components/ProjectCard";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
 const Dashboard = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -26,69 +26,115 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is authenticated
-    const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
-    
-    if (!isAuthenticated) {
-      navigate("/login");
-      return;
-    }
-    
-    // Load projects from localStorage or use mock data if none exists
-    const savedProjects = localStorage.getItem("projects");
-    
-    if (savedProjects) {
-      setProjects(JSON.parse(savedProjects));
-    } else {
-      // Mock projects for demo purposes
-      const mockProjects = [
-        {
-          id: "project1",
-          title: "Application mobile de gestion des tâches",
-          description: "Développement d'une application mobile pour la gestion des tâches quotidiennes, avec synchronisation cloud et notifications.",
-          createdAt: new Date().toISOString(),
-          epicsCount: 5,
-          storiesCount: 15
-        },
-        {
-          id: "project2",
-          title: "Plateforme e-commerce B2B",
-          description: "Création d'une plateforme e-commerce dédiée aux transactions entre entreprises, avec gestion des devis et facturation automatique.",
-          createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          epicsCount: 8,
-          storiesCount: 24
-        }
-      ];
-      
-      setProjects(mockProjects);
-      localStorage.setItem("projects", JSON.stringify(mockProjects));
-    }
-    
-    setIsLoading(false);
-  }, [navigate]);
+    loadProjects();
+  }, []);
 
-  const createProject = () => {
+  const loadProjects = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+
+      const { data: projects, error } = await supabase
+        .from('projects')
+        .select(`
+          id,
+          name,
+          description,
+          created_at,
+          status,
+          owner_id
+        `)
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      // Charger les compteurs séparément
+      const projectsWithCounts = await Promise.all(
+        (projects || []).map(async (project) => {
+          const { count: epicsCount } = await supabase
+            .from('workflows')
+            .select('*', { count: 'exact', head: true })
+            .eq('project_id', project.id);
+
+          const { count: storiesCount } = await supabase
+            .from('tasks')
+            .select('*', { count: 'exact', head: true })
+            .eq('workflow_step_id', 
+              await supabase
+                .from('workflow_steps')
+                .select('id')
+                .in('workflow_id',
+                  await supabase
+                    .from('workflows')
+                    .select('id')
+                    .eq('project_id', project.id)
+                    .then(result => result.data?.map(w => w.id) || [])
+                )
+                .then(result => result.data?.map(ws => ws.id) || [])
+            );
+
+          return {
+            id: project.id,
+            title: project.name,
+            description: project.description,
+            createdAt: project.created_at,
+            epicsCount: epicsCount || 0,
+            storiesCount: storiesCount || 0
+          };
+        })
+      );
+
+      setProjects(projectsWithCounts);
+    } catch (error) {
+      console.error('Erreur lors du chargement des projets:', error);
+      toast.error("Erreur lors du chargement des projets");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const createProject = async () => {
     if (!newProject.title.trim()) {
       toast.error("Le titre du projet est requis");
       return;
     }
 
-    const newProjectData: Project = {
-      id: `project${Date.now()}`,
-      title: newProject.title,
-      description: newProject.description || "Aucune description",
-      createdAt: new Date().toISOString(),
-      epicsCount: 0,
-      storiesCount: 0
-    };
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        navigate("/login");
+        return;
+      }
 
-    const updatedProjects = [newProjectData, ...projects];
-    setProjects(updatedProjects);
-    localStorage.setItem("projects", JSON.stringify(updatedProjects));
-    
-    setNewProject({ title: "", description: "" });
-    setIsDialogOpen(false);
-    toast.success("Projet créé avec succès");
+      const { data: project, error } = await supabase
+        .from('projects')
+        .insert({
+          name: newProject.title,
+          description: newProject.description || "Aucune description",
+          owner_id: user.id,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setNewProject({ title: "", description: "" });
+      setIsDialogOpen(false);
+      toast.success("Projet créé avec succès");
+      
+      // Recharger la liste des projets
+      loadProjects();
+    } catch (error) {
+      console.error('Erreur lors de la création du projet:', error);
+      toast.error("Erreur lors de la création du projet");
+    }
   };
 
   const filteredProjects = projects.filter(project => 
