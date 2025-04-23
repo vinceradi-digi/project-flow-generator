@@ -3,8 +3,8 @@ console.log('DEBUG - Variables d\'environnement disponibles:', Object.keys(impor
 console.log('DEBUG - VITE_OPENAI_API_KEY définie:', !!import.meta.env.VITE_OPENAI_API_KEY);
 console.log('DEBUG - Valeur de process.env:', typeof process !== 'undefined' ? 'process.env existe' : 'process.env n\'existe pas');
 
-// Clé de secours pour déboguer (à remplacer par votre vraie clé en production)
-const FALLBACK_API_KEY = 'sk-proj-AGOzdHVc057CjuqEWHolFjWEyxQuzTmWWyMOsy45ajUhqq4CKBbpWgayRpjS8_u1qRrLjgfvaT3BlbkFJWdm61pdXhuxZ_BXu2OxScKgRrTd4M4vt5g77ThHIMyniLRQyJWbbbskKlwfbWdm5AZlWoA';
+// Clé de secours pour déboguer (NE PAS METTRE DE VRAIE CLÉ ICI)
+const FALLBACK_API_KEY = ''; // Laissez vide pour éviter les problèmes de sécurité
 
 export const OPENAI_CONFIG = {
   apiKey: import.meta.env.VITE_OPENAI_API_KEY || FALLBACK_API_KEY,
