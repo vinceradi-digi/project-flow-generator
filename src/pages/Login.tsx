@@ -1,18 +1,20 @@
-
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthForm from "@/components/AuthForm";
+import { supabase } from "@/lib/supabase";
 
 const Login = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is already authenticated
-    const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
-    
-    if (isAuthenticated) {
-      navigate("/dashboard");
-    }
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        navigate("/dashboard");
+      }
+    };
+
+    checkAuth();
   }, [navigate]);
 
   return (

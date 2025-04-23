@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,10 +7,10 @@ import { useNavigate } from "react-router-dom";
 export interface Project {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   createdAt: string;
-  epicsCount: number;
-  storiesCount: number;
+  epicsCount: number | null;
+  storiesCount: number | null;
 }
 
 interface ProjectCardProps {
