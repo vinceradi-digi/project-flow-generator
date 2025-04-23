@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +11,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { AIService } from "../services/aiService";
 
 interface SpecificationViewProps {
   projectId: string;
@@ -41,86 +41,44 @@ const SpecificationView = ({ projectId }: SpecificationViewProps) => {
     setIsGenerating(true);
     
     try {
-      // Simulate API call for spec generation
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('Initialisation du service AI avec la clé:', import.meta.env.VITE_OPENAI_API_KEY ? 'Clé présente' : 'Clé manquante');
+      const aiService = new AIService(import.meta.env.VITE_OPENAI_API_KEY || '');
       
-      // Mock generation - In a real app, this would come from an AI service
-      const generatedSpec = `# Spécifications du projet
-      
-## Contexte et objectifs
-${needsDescription}
-
-## Utilisateurs cibles
-- Chefs de projets
-- Product owners
-- Développeurs
-- Parties prenantes métier
-
-## Fonctionnalités clés
-1. Interface de gestion de projets
-2. Système de création de spécifications
-3. Génération automatique d'EPICs
-4. Découpage en User Stories
-5. Suivi de l'avancement du projet
-
-## Exigences techniques
-- Application web responsive
-- Interface intuitive et modern
-- Système d'authentification sécurisé
-- Sauvegarde automatique des données
-
-## Contraintes
-- Respect des normes RGPD
-- Interface multilingue (français, anglais)
-- Performance et temps de réponse optimisés
-
-## Livrables attendus
-- Application web fonctionnelle
-- Documentation technique
-- Guide utilisateur
-`;
-      
+      console.log('Génération des spécifications...');
+      const generatedSpec = await aiService.generateSpecification(needsDescription);
+      console.log('Spécifications générées avec succès');
       setSpecification(generatedSpec);
       
-      // Save to localStorage
+      console.log('Sauvegarde des spécifications...');
       localStorage.setItem(`project_${projectId}_needs`, needsDescription);
       localStorage.setItem(`project_${projectId}_specification`, generatedSpec);
       
-      // Generate EPICs based on specification
-      const epics = [
-        {
-          id: "epic1",
-          title: "Système d'authentification",
-          description: "Permettre aux utilisateurs de s'inscrire et se connecter"
-        },
-        {
-          id: "epic2",
-          title: "Gestion de projets",
-          description: "Fonctionnalités de création et gestion de projets"
-        },
-        {
-          id: "epic3",
-          title: "Génération de spécifications",
-          description: "Module d'IA pour générer des spécifications à partir de besoins"
-        },
-        {
-          id: "epic4",
-          title: "Système d'EPICs",
-          description: "Gestion des EPICs liés aux projets"
-        },
-        {
-          id: "epic5",
-          title: "User Stories",
-          description: "Gestion des User Stories liées aux EPICs"
-        }
-      ];
+      console.log('Génération des EPICs...');
+      const generatedEpics = await aiService.generateEpicsAndStories(generatedSpec);
+      console.log('EPICs générés:', generatedEpics);
       
-      localStorage.setItem(`project_${projectId}_epics`, JSON.stringify(epics));
+      console.log('Ajout des IDs aux EPICs...');
+      const epicsWithIds = generatedEpics.map((epic, index) => ({
+        ...epic,
+        id: `epic${index + 1}`,
+        description: epic.objective,
+        stories: epic.stories.map((story, storyIndex) => ({
+          ...story,
+          id: `story_${index + 1}_${storyIndex + 1}`
+        }))
+      }));
       
-      toast.success("Spécifications générées avec succès");
+      console.log('Sauvegarde des EPICs...');
+      localStorage.setItem(`project_${projectId}_epics`, JSON.stringify(epicsWithIds));
+      
+      toast.success("Spécifications et EPICs générés avec succès");
     } catch (error) {
-      toast.error("Une erreur s'est produite lors de la génération");
-      console.error(error);
+      console.error('Erreur détaillée lors de la génération:', error);
+      if (error instanceof Error) {
+        console.error('Message d\'erreur:', error.message);
+        console.error('Stack trace:', error.stack);
+      }
+      toast.error(`Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     } finally {
       setIsGenerating(false);
     }

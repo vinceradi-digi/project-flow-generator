@@ -1,119 +1,123 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import SpecificationView from "@/components/SpecificationView";
-import EpicsView from "@/components/EpicsView";
-import UserStoriesView from "@/components/UserStoriesView";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
+import { Project } from "@/components/ProjectCard";
 import { toast } from "sonner";
 
-type ProjectDetailParams = {
-  id: string;
-};
+interface Epic {
+  title: string;
+  description: string;
+  stories: {
+    title: string;
+    description: string;
+  }[];
+}
+
+interface ProjectContent {
+  epics: Epic[];
+}
 
 const ProjectDetail = () => {
-  const { id } = useParams<ProjectDetailParams>();
-  const [projectTitle, setProjectTitle] = useState("");
+  const { projectId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  
-  // Get the current tab from URL search params
-  const searchParams = new URLSearchParams(location.search);
-  const tab = searchParams.get("tab") || "specification";
-  
+  const [project, setProject] = useState<Project | null>(null);
+  const [projectContent, setProjectContent] = useState<ProjectContent | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
   useEffect(() => {
-    // Check if user is authenticated
+    // Vérifier l'authentification
     const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
-    
     if (!isAuthenticated) {
       navigate("/login");
       return;
     }
-    
-    if (!id) {
-      navigate("/dashboard");
-      toast.error("Projet non trouvé");
-      return;
-    }
-    
-    // Load project details
-    const savedProjects = localStorage.getItem("projects");
-    
-    if (savedProjects) {
-      const projects = JSON.parse(savedProjects);
-      const project = projects.find((p: any) => p.id === id);
-      
-      if (project) {
-        setProjectTitle(project.title);
-      } else {
-        navigate("/dashboard");
-        toast.error("Projet non trouvé");
-      }
-    } else {
-      navigate("/dashboard");
-      toast.error("Aucun projet disponible");
-    }
-  }, [id, navigate]);
 
-  const handleTabChange = (value: string) => {
-    // Update URL when tab changes
-    const newSearchParams = new URLSearchParams(location.search);
-    newSearchParams.set("tab", value);
-    
-    // Keep epic parameter if it exists when switching to stories tab
-    if (value === "stories" && !newSearchParams.has("epic")) {
-      // If switching to stories without an epic specified, try to get the first epic
-      const epics = localStorage.getItem(`project_${id}_epics`);
-      if (epics) {
-        const parsedEpics = JSON.parse(epics);
-        if (parsedEpics.length > 0) {
-          newSearchParams.set("epic", parsedEpics[0].id);
+    // Charger les détails du projet
+    const loadProject = () => {
+      const projects = JSON.parse(localStorage.getItem("projects") || "[]");
+      const foundProject = projects.find((p: Project) => p.id === projectId);
+      
+      if (foundProject) {
+        setProject(foundProject);
+        // Charger les EPICs et Stories générés
+        const content = localStorage.getItem(`project_${projectId}_content`);
+        if (content) {
+          setProjectContent(JSON.parse(content));
         }
+      } else {
+        toast.error("Projet non trouvé");
+        navigate("/");
       }
-    }
-    
-    // If switching away from stories, remove epic parameter
-    if (value !== "stories") {
-      newSearchParams.delete("epic");
-    }
-    
-    navigate(`/project/${id}?${newSearchParams.toString()}`);
-  };
+      setIsLoading(false);
+    };
+
+    loadProject();
+  }, [projectId, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="container max-w-6xl py-8">
+        <div className="flex justify-center items-center py-12">
+          <p>Chargement du projet...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return null;
+  }
 
   return (
     <div className="container max-w-6xl py-8 animate-fade-in">
-      <div className="mb-8">
-        <Button
-          variant="ghost"
-          className="mb-2 pl-0 hover:bg-transparent"
-          onClick={() => navigate("/dashboard")}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Retour aux projets
+      <div className="flex items-center gap-4 mb-8">
+        <Button variant="outline" onClick={() => navigate("/")} className="group">
+          <ArrowLeft className="mr-2 h-4 w-4 transform transition-transform group-hover:-translate-x-1" />
+          Retour
         </Button>
-        <h1 className="text-3xl font-bold">{projectTitle}</h1>
+        <div>
+          <h1 className="text-3xl font-bold">{project.title}</h1>
+          <p className="text-muted-foreground">{project.description}</p>
+        </div>
       </div>
 
-      <Tabs value={tab} onValueChange={handleTabChange} className="space-y-8">
-        <TabsList className="w-full sm:w-auto grid grid-cols-3 sm:inline-flex">
-          <TabsTrigger value="specification">Spécifications</TabsTrigger>
-          <TabsTrigger value="epics">EPICs</TabsTrigger>
-          <TabsTrigger value="stories">User Stories</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="specification" className="mt-6 tab-transition-enter">
-          {id && <SpecificationView projectId={id} />}
-        </TabsContent>
-        
-        <TabsContent value="epics" className="mt-6 tab-transition-enter">
-          {id && <EpicsView projectId={id} />}
-        </TabsContent>
-        
-        <TabsContent value="stories" className="mt-6 tab-transition-enter">
-          {id && <UserStoriesView projectId={id} />}
-        </TabsContent>
-      </Tabs>
+      {projectContent ? (
+        <div className="space-y-8">
+          {projectContent.epics.map((epic, epicIndex) => (
+            <Card key={epicIndex} className="glass-card">
+              <CardHeader>
+                <CardTitle className="text-xl">
+                  EPIC {epicIndex + 1}: {epic.title}
+                </CardTitle>
+                <p className="text-muted-foreground">{epic.description}</p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {epic.stories.map((story, storyIndex) => (
+                    <Card key={storyIndex} className="glass-card">
+                      <CardHeader>
+                        <CardTitle className="text-lg">
+                          User Story {storyIndex + 1}: {story.title}
+                        </CardTitle>
+                        <p className="text-muted-foreground">{story.description}</p>
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-12 bg-muted/20 rounded-lg">
+          <h3 className="text-xl font-medium mb-2">Aucun contenu trouvé</h3>
+          <p className="text-muted-foreground text-center max-w-md">
+            Les EPICs et User Stories n'ont pas pu être chargés pour ce projet.
+          </p>
+        </div>
+      )}
     </div>
   );
 };

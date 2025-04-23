@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ import {
 import ProjectCard, { Project } from "@/components/ProjectCard";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
+import { generateProjectSpecifications } from "@/services/assistant";
 
 const Dashboard = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -23,6 +23,7 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [newProject, setNewProject] = useState({ title: "", description: "" });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,61 +35,114 @@ const Dashboard = () => {
       return;
     }
     
-    // Load projects from localStorage or use mock data if none exists
+    // Load projects from localStorage
     const savedProjects = localStorage.getItem("projects");
     
     if (savedProjects) {
       setProjects(JSON.parse(savedProjects));
-    } else {
-      // Mock projects for demo purposes
-      const mockProjects = [
-        {
-          id: "project1",
-          title: "Application mobile de gestion des tâches",
-          description: "Développement d'une application mobile pour la gestion des tâches quotidiennes, avec synchronisation cloud et notifications.",
-          createdAt: new Date().toISOString(),
-          epicsCount: 5,
-          storiesCount: 15
-        },
-        {
-          id: "project2",
-          title: "Plateforme e-commerce B2B",
-          description: "Création d'une plateforme e-commerce dédiée aux transactions entre entreprises, avec gestion des devis et facturation automatique.",
-          createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          epicsCount: 8,
-          storiesCount: 24
-        }
-      ];
-      
-      setProjects(mockProjects);
-      localStorage.setItem("projects", JSON.stringify(mockProjects));
     }
     
     setIsLoading(false);
   }, [navigate]);
 
-  const createProject = () => {
+  const createProject = async () => {
     if (!newProject.title.trim()) {
       toast.error("Le titre du projet est requis");
       return;
     }
 
-    const newProjectData: Project = {
-      id: `project${Date.now()}`,
-      title: newProject.title,
-      description: newProject.description || "Aucune description",
-      createdAt: new Date().toISOString(),
-      epicsCount: 0,
-      storiesCount: 0
-    };
+    setIsGenerating(true);
+    toast.info("L'assistant IA génère les EPICs et User Stories pour votre projet. Cette opération peut prendre quelques instants...");
 
-    const updatedProjects = [newProjectData, ...projects];
-    setProjects(updatedProjects);
-    localStorage.setItem("projects", JSON.stringify(updatedProjects));
-    
-    setNewProject({ title: "", description: "" });
-    setIsDialogOpen(false);
-    toast.success("Projet créé avec succès");
+    try {
+      // Créer le projet
+      const newProjectData: Project = {
+        id: `project${Date.now()}`,
+        title: newProject.title,
+        description: newProject.description || "Aucune description",
+        createdAt: new Date().toISOString(),
+        epicsCount: 0,
+        storiesCount: 0
+      };
+
+      // Générer les EPICs et Stories avec l'assistant
+      let generatedContent;
+      try {
+        generatedContent = await generateProjectSpecifications(newProject.title, newProject.description);
+        
+        // Mettre à jour le projet avec le nombre d'EPICs et Stories générés
+        newProjectData.epicsCount = generatedContent.epics.length;
+        newProjectData.storiesCount = generatedContent.epics.reduce(
+          (acc: number, epic) => acc + epic.stories.length, 
+          0
+        );
+        
+        // Sauvegarder les EPICs et Stories générés
+        generatedContent = {
+          epics: [{
+            title: "EPIC par défaut",
+            objective: "À définir",
+            problemAddressed: "À définir",
+            businessValue: "À définir",
+            stories: [{
+              epic: "EPIC par défaut",
+              story: "User Story à définir",
+              acceptanceCriteria: [{
+                given: "Condition à définir",
+                when: "Action à définir",
+                then: "Résultat attendu à définir"
+              }],
+              kpis: "À définir",
+              designLink: ""
+            }]
+          }]
+        };
+        
+        localStorage.setItem(`project_${newProjectData.id}_content`, JSON.stringify(generatedContent));
+        toast.success(`Projet créé avec succès ! ${generatedContent.epics.length} EPICs et ${newProjectData.storiesCount} User Stories ont été générés par l'assistant IA.`);
+      } catch (assistantError) {
+        console.error("Erreur avec l'assistant IA:", assistantError);
+        toast.error("Impossible de générer le contenu avec l'assistant IA. Le projet a été créé sans EPICs ni User Stories.");
+        
+        // Créer un template de contenu vide en cas d'erreur
+        generatedContent = {
+          epics: [{
+            title: "EPIC par défaut",
+            objective: "À définir",
+            problemAddressed: "À définir",
+            businessValue: "À définir",
+            stories: [{
+              epic: "EPIC par défaut",
+              story: "User Story à définir",
+              acceptanceCriteria: [{
+                given: "Condition à définir",
+                when: "Action à définir",
+                then: "Résultat attendu à définir"
+              }],
+              kpis: "À définir",
+              designLink: ""
+            }]
+          }]
+        };
+        
+        localStorage.setItem(`project_${newProjectData.id}_content`, JSON.stringify(generatedContent));
+      }
+
+      const updatedProjects = [newProjectData, ...projects];
+      setProjects(updatedProjects);
+      localStorage.setItem("projects", JSON.stringify(updatedProjects));
+      
+      setNewProject({ title: "", description: "" });
+      setIsDialogOpen(false);
+      
+      // Rediriger vers la page de détail du projet
+      navigate(`/project/${newProjectData.id}`);
+    } catch (error) {
+      toast.error("Erreur lors de la création du projet: " + (error instanceof Error ? error.message : "Erreur inconnue"));
+      console.error(error);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const filteredProjects = projects.filter(project => 
@@ -102,7 +156,7 @@ const Dashboard = () => {
         <div>
           <h1 className="text-3xl font-bold">Mes projets</h1>
           <p className="text-muted-foreground">
-            Gérez vos projets de développement produit
+            Retrouvez l'ensemble de vos projets
           </p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -117,6 +171,7 @@ const Dashboard = () => {
               <DialogTitle>Créer un nouveau projet</DialogTitle>
               <DialogDescription>
                 Définissez le titre et la description de votre nouveau projet.
+                L'assistant IA générera automatiquement les EPICs et User Stories associées.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -144,11 +199,76 @@ const Dashboard = () => {
                 />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
                 Annuler
               </Button>
-              <Button onClick={createProject}>Créer le projet</Button>
+              <Button 
+                variant="secondary" 
+                onClick={() => {
+                  // Créer un projet sans utiliser l'assistant IA
+                  const newProjectData: Project = {
+                    id: `project${Date.now()}`,
+                    title: newProject.title,
+                    description: newProject.description || "Aucune description",
+                    createdAt: new Date().toISOString(),
+                    epicsCount: 1,
+                    storiesCount: 1
+                  };
+                  
+                  // Template de contenu vide
+                  const emptyContent = {
+                    epics: [{
+                      title: "EPIC par défaut",
+                      objective: "À définir",
+                      problemAddressed: "À définir",
+                      businessValue: "À définir",
+                      stories: [{
+                        epic: "EPIC par défaut",
+                        story: "User Story à définir",
+                        acceptanceCriteria: [{
+                          given: "Condition à définir",
+                          when: "Action à définir",
+                          then: "Résultat attendu à définir"
+                        }],
+                        kpis: "À définir",
+                        designLink: ""
+                      }]
+                    }]
+                  };
+                  
+                  const updatedProjects = [newProjectData, ...projects];
+                  setProjects(updatedProjects);
+                  localStorage.setItem("projects", JSON.stringify(updatedProjects));
+                  localStorage.setItem(`project_${newProjectData.id}_content`, JSON.stringify(emptyContent));
+                  
+                  setNewProject({ title: "", description: "" });
+                  setIsDialogOpen(false);
+                  toast.success("Projet créé avec succès (sans génération IA)");
+                  
+                  // Rediriger vers la page de détail du projet
+                  navigate(`/project/${newProjectData.id}`);
+                }}
+                className="w-full sm:w-auto"
+                disabled={!newProject.title.trim() || isGenerating}
+              >
+                Créer sans IA
+              </Button>
+              <Button 
+                onClick={createProject} 
+                disabled={isGenerating}
+                className="w-full sm:w-auto"
+              >
+                {isGenerating ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Génération en cours...
+                  </>
+                ) : "Créer avec IA"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

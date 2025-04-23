@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -13,18 +12,25 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Plus, FileText } from "lucide-react";
 import { toast } from "sonner";
+import { AIService } from "../services/aiService";
 
 interface Epic {
   id: string;
   title: string;
   description: string;
-  stories?: UserStory[];
+  objective: string;
+  businessProblem: string;
+  businessValue: string;
+  stories: UserStory[];
 }
 
 interface UserStory {
   id: string;
   title: string;
   description: string;
+  acceptanceCriteria: string[];
+  definitionOfDone: string[];
+  mockupUrl?: string;
   status: "todo" | "in-progress" | "done";
 }
 
@@ -35,6 +41,7 @@ interface EpicsViewProps {
 const EpicsView = ({ projectId }: EpicsViewProps) => {
   const [epics, setEpics] = useState<Epic[]>([]);
   const [specification, setSpecification] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const navigate = useNavigate();
   
   useEffect(() => {
@@ -48,6 +55,36 @@ const EpicsView = ({ projectId }: EpicsViewProps) => {
 
   const viewUserStories = (epicId: string) => {
     navigate(`/project/${projectId}?tab=stories&epic=${epicId}`);
+  };
+
+  const generateEpicsAndStories = async () => {
+    if (!specification) return;
+
+    try {
+      setIsGenerating(true);
+      const aiService = new AIService();
+      const generatedEpics = await aiService.generateEpicsAndStories(specification);
+      
+      // Add IDs to the generated epics and stories
+      const epicsWithIds = generatedEpics.map((epic, index) => ({
+        ...epic,
+        id: `epic${index + 1}`,
+        description: epic.objective,
+        stories: epic.stories.map((story, storyIndex) => ({
+          ...story,
+          id: `story_${index + 1}_${storyIndex + 1}`
+        }))
+      }));
+
+      setEpics(epicsWithIds);
+      localStorage.setItem(`project_${projectId}_epics`, JSON.stringify(epicsWithIds));
+      toast.success("EPICs et User Stories générés avec succès");
+    } catch (error) {
+      console.error('Erreur lors de la génération:', error);
+      toast.error("Erreur lors de la génération des EPICs");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   if (!specification) {
@@ -77,43 +114,11 @@ const EpicsView = ({ projectId }: EpicsViewProps) => {
           Les EPICs seront générés automatiquement à partir des spécifications.
         </p>
         <Button 
-          variant="default" 
-          onClick={() => {
-            // Generate mock epics
-            const mockEpics = [
-              {
-                id: "epic1",
-                title: "Système d'authentification",
-                description: "Permettre aux utilisateurs de s'inscrire et se connecter"
-              },
-              {
-                id: "epic2",
-                title: "Gestion de projets",
-                description: "Fonctionnalités de création et gestion de projets"
-              },
-              {
-                id: "epic3",
-                title: "Génération de spécifications",
-                description: "Module d'IA pour générer des spécifications à partir de besoins"
-              },
-              {
-                id: "epic4",
-                title: "Système d'EPICs",
-                description: "Gestion des EPICs liés aux projets"
-              },
-              {
-                id: "epic5",
-                title: "User Stories",
-                description: "Gestion des User Stories liées aux EPICs"
-              }
-            ];
-            
-            setEpics(mockEpics);
-            localStorage.setItem(`project_${projectId}_epics`, JSON.stringify(mockEpics));
-            toast.success("EPICs générés avec succès");
-          }}
+          variant="default"
+          onClick={generateEpicsAndStories}
+          disabled={isGenerating}
         >
-          Générer les EPICs
+          {isGenerating ? "Génération en cours..." : "Générer les EPICs"}
         </Button>
       </div>
     );
@@ -130,9 +135,23 @@ const EpicsView = ({ projectId }: EpicsViewProps) => {
                 EPIC
               </Badge>
             </div>
-            <CardDescription className="line-clamp-2">
+            <CardDescription className="line-clamp-2 mb-4">
               {epic.description}
             </CardDescription>
+            <div className="space-y-3 text-sm">
+              <div>
+                <strong className="text-primary">Objectif :</strong>
+                <p className="text-muted-foreground">{epic.objective}</p>
+              </div>
+              <div>
+                <strong className="text-primary">Problématique adressée :</strong>
+                <p className="text-muted-foreground">{epic.businessProblem}</p>
+              </div>
+              <div>
+                <strong className="text-primary">Valeur métier :</strong>
+                <p className="text-muted-foreground">{epic.businessValue}</p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="py-2 flex-grow">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
